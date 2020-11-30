@@ -1,19 +1,44 @@
-require "bytestring"
---require "luabit/bit"
 require "bus"
+local ffi = require("ffi")
 cpu = {}
+
+
+local bnot =  bit.bnot
+local band, bor, bxor =  bit.band,  bit.bor,  bit.bxor
+local lshift, rshift, rol =  bit.lshift,  bit.rshift, bit.rol
+
+local cpustatus =[[ typedef union {
+    struct
+      {
+
+      	uint8_t C: 1;
+		uint8_t Z: 1;
+		uint8_t I: 1;
+		uint8_t D: 1;
+		uint8_t B: 1;
+		uint8_t U: 1;
+		uint8_t V: 1;
+		uint8_t N: 1;
+
+      } flag;
+      unsigned __int8 reg;
+        
+}statuss_register;]]
+
+ffi.cdef(cpustatus)
+status = ffi.new("statuss_register")
 
 lastPC = 0x0000
 local _nz = 0x00
 
-local bitand = function (a, b)
+local band = function (a, b)
 	--if b == 0x00ff then
 	--	return a%256
 	--end
-	return bit.band(a, b) --bitoper(a, b, AND)
+	return band(a, b) --bitoper(a, b, AND)
 end
 
-local bitor = function (a, b)
+local bor = function (a, b)
 	return bit.bor(a, b) --bitoper(a, b, OR)
 end
 
@@ -30,7 +55,7 @@ end
 
 local function write(address, byte)
 	--stub
-	bus.cpuWrite(address, byte)
+	bus.cpuWrite(address, band(byte, 0xFF))
 end
 
 local function fetch()
@@ -39,7 +64,7 @@ local function fetch()
 	else
 		fetched = read(address_abs)
 	end
-	return fetched
+	return band(fetched, 0xFF)
 end
 
 
@@ -48,7 +73,7 @@ end
 local function btoi(str)
 	outNum = 0
 	for i = 1, string.len(str) do
-		if string.sub(str, i, i) == "1" then
+		if string.sub(str, i, i) == 1 then
 			outNum = outNum +  2^(string.len(str)-i)
 		end
 	end
@@ -64,7 +89,7 @@ local function itob(numI, bytes)
 			bstring = tostring(num%2) .. bstring
 			num = math.floor(num/2)
 		else
-			bstring = "0" .. bstring
+			bstring = 0 .. bstring
 		end
 	end
 	return bstring
@@ -81,15 +106,6 @@ X = 0x00 -- register 8 bit
 Y = 0x00 -- register 8 bit
 stkp =0x00-- stavck pointer (possibly 8 bits?)
 pc = 0x0000 --program counter 16 bits
-status = {} -- status register 8 bit word
-status["C"] = "0"
-status["Z"] = "0"
-status["I"] = "0"
-status["D"] = "0"
-status["B"] = "0"
-status["U"] = "0"
-status["V"] = "0"
-status["N"] = "0"
 fetched = 0x00
 address_abs = 0x0000
 address_relative = 0x00
@@ -97,33 +113,40 @@ opcode = 0x00
 cycles = 0x00
 impliedAddressingMode = false
 
-local function setStatus(num)
-	if bit.band(0x01, num) > 0 then status["C"] = "1" else status["C"] = "0" end
-	if bit.band(0x02, num) > 0 then status["Z"] = "1" else status["Z"] = "0" end
-	if bit.band(0x04, num) > 0 then status["I"] = "1" else status["I"] = "0" end
-	if bit.band(0x08, num) > 0 then status["D"] = "1" else status["D"] = "0" end
-	if bit.band(0x10, num) > 0 then status["B"] = "1" else status["B"] = "0" end
-	if bit.band(0x20, num) > 0 then status["U"] = "1" else status["U"] = "0" end
-	if bit.band(0x40, num) > 0 then status["V"] = "1" else status["V"] = "0" end
-	if bit.band(0x80, num) > 0 then status["N"] = "1" else status["N"] = "0" end
-end
-local function getStatus() 
-	return "" .. status["C"] .. status["Z"] .. status["I"] .. status["D"] .. status["B"] .. status["U"] .. status["V"] .. status["N"]
-end
+
 --flags
-local function getFlag(flag)
-	return status[flag]
+
+local function getFlag(f)
+	if f == "N" then  return  status.flag.N end
+	if f == "V" then  return  status.flag.V end
+	if f == "U" then  return  status.flag.U end
+	if f == "B" then  return  status.flag.B end
+	if f == "D" then  return  status.flag.D end
+	if f == "I" then  return  status.flag.I end
+	if f == "Z" then  return  status.flag.Z end
+ 	if f == "C" then  return  status.flag.C end
 end
 
-local function setFlag(flag, value)
-	value = value or "0"
+
+local function setFlag(f, value)
+	value = value or 0
 	if type(value) == "number" then
-		value = value >= 1
+		if value == 0 then value = false else value = true end
 	end
 
-	if value == true then value = "1"
-	elseif value == false then value = "0" end
-	status[flag] = tostring(value)
+	if value == true then value = 1
+	elseif value == false then value = 0 else value = tonumber(value) end
+
+	if f == "N" then status.flag.N = value 
+	elseif f == "V" then status.flag.V = value 
+	elseif f == "U" then status.flag.U = value 
+	elseif f == "B" then status.flag.B = value
+	elseif f == "D" then status.flag.D = value
+	elseif f == "I" then status.flag.I = value
+	elseif f == "Z" then status.flag.Z = value
+ 	elseif f == "C" then status.flag.C = value end
+
+	--status[flag] = tostring(value)
 end
 
 --ADDRESSING_MODES
@@ -141,19 +164,19 @@ end
 local function ZP0() -- zero page addressing, the first byte of an address is it's page, 
 	address_abs = read(pc)
 	pc = pc + 1
-	address_abs = btoi(bitand(itob(address_abs, 2), itob( 0x00FF, 2)))
+	--address_abs = btoi(band(itob(address_abs, 2), itob( 0x00FF, 2)))
 	return false
 end
 local function ZPX()  --zero page addressing with x as offset
 	address_abs = (read(pc) + X)
 	pc = pc + 1
-	address_abs = btoi(bitand(itob(address_abs, 2), itob( 0x00FF, 2)))
+	address_abs = band(address_abs, 0x00FF)
 	return false
 end
 local function ZPY()
 	address_abs = (read(pc) + Y)
 	pc = pc + 1
-	address_abs = btoi(bitand(itob(address_abs, 2), itob( 0x00FF, 2)))
+	address_abs = band(address_abs,  0x00FF)
 	return false
 end
 local function ABS() 
@@ -163,7 +186,7 @@ local function ABS()
 	pc = pc + 1
 
 	--address_abs = btoi(itob(hi) .. itob(lo)) -- append the high byte to the low byte to get the full memory address
-	address_abs = bitor(shiftLeft(hi, 8),  lo)
+	address_abs = bor(shiftLeft(hi, 8),  lo)
 	return false
 end
 local function ABX() 
@@ -172,9 +195,10 @@ local function ABX()
 	hi = read (pc)
 	pc = pc + 1
 
-	address_abs = bitor(shiftLeft(hi, 8),  lo) -- append the high byte to the low byte to get the full memory address
+	address_abs = bor(shiftLeft(hi, 8),  lo) -- append the high byte to the low byte to get the full memory address
 	address_abs = (address_abs + X)%(2^16)
-	if bitand(address_abs, 0xFF00) ~= shiftLeft(hi, 8) then --If after incrementing by X the address is on a new page, we might need an extra clock cycle
+	--print("ABX", address_abs)
+	if band(address_abs, 0xFF00) ~= shiftLeft(hi, 8) then --If after incrementing by X the address is on a new page, we might need an extra clock cycle
 		return true
 	else
 		return false
@@ -186,9 +210,9 @@ local function ABY()
 	hi = read (pc)
 	pc = pc + 1
 
-	address_abs = bitor(shiftLeft(hi, 8),  lo) -- append the high byte to the low byte to get the full memory address
+	address_abs = bor(shiftLeft(hi, 8),  lo) -- append the high byte to the low byte to get the full memory address
 	--address_abs = (address_abs + Y)%(2^16)
-	if bitand(address_abs, 0xFF00) ~= shiftLeft(hi, 8) then--If after incrementing by Y the address is on a new page, we might need an extra clock cycle
+	if band(address_abs, 0xFF00) ~= shiftLeft(hi, 8) then--If after incrementing by Y the address is on a new page, we might need an extra clock cycle
 		return true
 	else
 		return false
@@ -201,15 +225,15 @@ local function IND() -- 6502 equivalent of pointers
 	ptr_hi = read (pc)
 	pc = pc + 1
 
-	ptr = bitor(shiftLeft(ptr_hi, 8),  ptr_lo)
+	ptr = bor(shiftLeft(ptr_hi, 8),  ptr_lo)
 
 	-- this would be the intended functionality, but theres actually a bug in the hardware...
-	--address_abs = bitor(shiftLeft(read(ptr+1), 8), read(ptr + 0))
+	--address_abs = bor(shiftLeft(read(ptr+1), 8), read(ptr + 0))
 
 	if ptr_lo == 0x00ff then --page boundary bug
-		address_abs = bitor(shiftLeft(read(bitand(ptr, 0xFF00)), 8), read(ptr + 0))
+		address_abs = bor(shiftLeft(read(band(ptr, 0xFF00)), 8), read(ptr + 0))
 	else -- behave normally
-		address_abs = bitor(shiftLeft(read(ptr+1), 8), read(ptr + 0))
+		address_abs = bor(shiftLeft(read(ptr+1), 8), read(ptr + 0))
 	end
 	return false
 end
@@ -218,9 +242,9 @@ local function IZX()
 	t = read(pc)
 	pc = pc + 1
 
-	local lo = read(bitand(t + X, 0x00FF))
-	local hi = read(bitand(t + X + 1, 0x00FF))
-	address_abs = bitor(shiftLeft(hi, 8),  lo)
+	local lo = read(band(t + X, 0x00FF))
+	local hi = read(band(t + X + 1, 0x00FF))
+	address_abs = bor(shiftLeft(hi, 8),  lo)
 
 	return false
 end
@@ -228,12 +252,13 @@ local function IZY()
 	t = read(pc)
 	pc = pc + 1
 
-	local lo = read(bitand(t, 0x00FF))
-	local hi = read(bitand(t + 1, 0x00FF))
-	address_abs = bitor(shiftLeft(hi, 8),  lo)
+	local lo = read(band(t, 0x00FF))
+	local hi = read(band(t + 1, 0x00FF))
+	address_abs = bor(shiftLeft(hi, 8),  lo)
 	address_abs = address_abs + Y
-
-	if bitand(address_abs, 0xFF00) ~= shiftLeft(hi, 8)  then
+	address_abs = band(address_abs, 0xFFFF)
+	--print("IZY", address_abs)
+	if band(address_abs, 0xFF00) ~= shiftLeft(hi, 8)  then
 		return true
 	else
 		return false
@@ -243,8 +268,8 @@ end
 local function REL() 
 	address_relative = read(pc)
 	pc = pc + 1
-	if bitand(address_relative, 0x80) >= 1 then --Check if negative
-		address_relative = bitor(address_relative, 0xFF00)
+	if band(address_relative, 0x80) >= 1 then --Check if negative
+		address_relative = bor(address_relative, 0xFF00)
 	end
 	return false
 end
@@ -256,70 +281,70 @@ end
 
 local function  AND() 
 	fetch()
-	A = bitand(A, fetched)
+	A = band(band(A, fetched), 0xFF)
 	setFlag("Z", A == 0x00)
-	setFlag("N", bitand(A, 0x80))
+	setFlag("N", ( band(A, 0x80)))
 	return true
 end	
 local function  BCC() 
-	if getFlag("C") == "0" then
+	if status.flag.C == 0 then
 		cycles = cycles + 1
 		address_abs = pc + address_relative
-		if bitand(address_abs, 0xff00) ~= bitand(pc, 0xff00) then
+		if band(address_abs, 0xff00) ~= band(pc, 0xff00) then
 			cycles = cycles + 1
 		end
 
-		pc = address_abs
+		pc = band(address_abs, 0xFFFF)
 	end
 	return false
 
 end
 local function  BCS() 
-	if getFlag("C") == "1" then
+	if status.flag.C == 1 then
 		cycles = cycles + 1
 		address_abs = pc + address_relative
-		if bitand(address_abs, 0xff00) ~= bitand(pc, 0xff00) then
+		if band(address_abs, 0xff00) ~= band(pc, 0xff00) then
 			cycles = cycles + 1
 		end
 
-		pc = address_abs
+		pc = band(address_abs, 0xFFFF)
 	end
 	return false
 
 end	
 local function  BEQ() 
-	if getFlag("Z") == "1" then
+	if status.flag.Z == 1 then
 		cycles = cycles + 1
 		address_abs = pc + address_relative
-		if bitand(address_abs, 0xff00) ~= bitand(pc, 0xff00) then
+		if band(address_abs, 0xff00) ~= band(pc, 0xff00) then
 			cycles = cycles + 1
 		end
 
-		pc = address_abs
+		pc = band(address_abs, 0xFFFF)
 	end
 	return false
 end	
 local function  BMI() 
-	if getFlag("N") == "1" then
+	if status.flag.N == 1 then
 		cycles = cycles + 1
 		address_abs = pc + address_relative
-		if bitand(address_abs, 0xff00) ~= bitand(pc, 0xff00) then
+		if band(address_abs, 0xff00) ~= band(pc, 0xff00) then
 			cycles = cycles + 1
 		end
 
-		pc = address_abs
+		pc = band(address_abs, 0xFFFF)
 	end
 	return false
 end
 local function  BNE() 
-	if getFlag("Z") == "0" then
+	if status.flag.Z == 0 then
 
 		cycles = cycles + 1
 		address_abs = pc + address_relative
-		if bitand(address_abs, 0xff00) ~= bitand(pc, 0xff00) then
+		if band(address_abs, 0xff00) ~= band(pc, 0xff00) then
 			cycles = cycles + 1
 		end
-		pc = bitand(address_abs, 0xFFFF)
+		pc = band(address_abs, 0xFFFF)
 		address_abs = pc
 		--print ("branching to", address_abs)
 		
@@ -327,23 +352,23 @@ local function  BNE()
 	return false
 end	
 local function  BPL() 
-	if getFlag("N") == "0" then
+	if status.flag.N == 0 then
 		cycles = cycles + 1
 		address_abs = pc + address_relative
-		if bitand(address_abs, 0xff00) ~= bitand(pc, 0xff00) then
+		if band(address_abs, 0xff00) ~= band(pc, 0xff00) then
 			cycles = cycles + 1
 		end
 
-		pc = address_abs
+		pc = band(address_abs, 0xFFFF)
 	end
 	return false
 end	
 	
 local function  BVC() 
-	if getFlag("V") == "0" then
+	if status.flag.V == 0 then
 		cycles = cycles + 1
 		address_abs = pc + address_relative
-		if bitand(address_abs, 0xff00) ~= bitand(pc, 0xff00) then
+		if band(address_abs, 0xff00) ~= band(pc, 0xff00) then
 			cycles = cycles + 1
 		end
 
@@ -352,10 +377,10 @@ local function  BVC()
 	return false
 end
 local function  BVS()
-	if getFlag("V") == "1" then
+	if status.flag.V == 1 then
 	cycles = cycles + 1
 	address_abs = pc + address_relative
-	if bitand(address_abs, 0xff00) ~= bitand(pc, 0xff00) then
+	if band(address_abs, 0xff00) ~= band(pc, 0xff00) then
 		cycles = cycles + 1
 	end
 
@@ -364,61 +389,109 @@ local function  BVS()
 	return false
 end
 local function  CLC() 
-	setFlag("C", false)
+	setFlag("C",  false)
 	return false
 end	
 local function  ADC()
 	fetch()
-	result = A + fetched + tonumber(getFlag("C"))
+	result = A + fetched + status.flag.C
 	setFlag("C", result > 255)
-	setFlag("Z", bitand(result, 0x00ff) == 0)
-	setFlag("N", bitand(A, 0x80))
+	setFlag("Z",  band(result, 0x00ff) == 0)
+	setFlag("N", ( band(A, 0x80)))
+	local n1 = bxor(result, A)
+	local n2 = bxor(bxor(A, fetched), 0xFFFF)
+	local n3 = band(n1, n2)
+	setFlag("V", band(n3, 0x0080))
 	mostSigA = bit.bxor(A, 128) == 128
 	mostSigM = bit.bxor(fetched, 128) == 128
 	mostSigR = bit.bxor(result, 128) == 128
-	setFlag("V", ((mostSigA == mostSigM) and (mostSigA ~= mostSigR)))
-	A = bitand(result, 0x00FF)
+
+	local b1, b2, b3 = (A >= 0x80), (fetched >= 0x80), (result >= 0x80)
+	--setFlag("V", (not(b1 or b2) and (b1 and b3)))
+	if (not b1) and (not b2) and b3 then setFlag( "V", 1)
+	elseif (b1) and (b2) and not b3  then setFlag( "V", 1)
+	else
+		setFlag( "V", 0)
+	end
+
+	--setFlag( "V", ( ((mostSigA == mostSigM) and (mostSigA ~= mostSigR))))
+	A = band(result, 0x00FF)
 	return true
 end
 local function  SBC()
 	fetch()
-	value = bit.bxor(fetched, 0x00ff)
-	result = A + value + tonumber(getFlag("C"))
-	setFlag("C", result > 255)
-	setFlag("Z", bitand(result, 0x00ff) == 0)
-	setFlag("N", bitand(A, 0x80))
-	mostSigA = bit.bxor(A, 128) == 128
-	mostSigM = bit.bxor(mem, 128) == 128
-	mostSigR = bit.bxor(result, 128) == 128
-	setFlag("V", ((mostSigA == mostSigM) and (mostSigA ~= mostSigR)))
-	A = bitand(result, 0x00FF)
+	local temp = fetched
+	local temp2 = A
+	local temp3 = status.flag.C
+	print("")
+	value = bxor(fetched, 0x00ff)
+	result = A + value + status.flag.C
+	setFlag("C", band(result, 0xFF00))
+	setFlag("Z",  band(result, 0x00ff) == 0)
+	setFlag("N", ( band(A, 0x0080)))
+	local v = band(band(fetched, A), 0x40) > 0
+	if v then v = 1 else v = 0 end
+
+	-- local n1 = bxor(result, A)
+	-- local n2 = bxor(result, bxor(fetched, 0x00ff))
+	-- local n3 = band(n1, n2)
+
+	-- local b1, b2, b3 = (A >= 128), (fetched >= 128), (result >= 128)
+	-- setFlag("V", (not(b1 or b2) and (b1 and b3)))
+
+	-- --setFlag("V", band(n3, 0x0080))
+	-- setFlag("V", band(n3, 0x0080))
+	local b1, b2, b3 = (A >= 0x80), (fetched >= 0x80), (result >= 0x80)
+	--setFlag("V", (not(b1 or b2) and (b1 and b3)))
+	if (not b1) and (not b2) and b3 then 
+		setFlag( "V", 1)
+		print(A, fetched, result)
+	elseif (b1) and (b2) and not b3  then 
+		setFlag( "V", 1)
+		print(A, fetched, result)
+	else
+		setFlag( "V", 0)
+		
+	end
+
+
+	-- mostSigA = bit.bxor(A, 128) == 128
+	-- mostSigM = bit.bxor(value, 128) == 128
+	-- mostSigR = bit.bxor(result, 128) == 128
+	--setFlag( "V", tonumber( ((mostSigA == mostSigM) and (mostSigA ~= mostSigR))))
+	A = band(result, 0x00FF)
+	if status.flag.Z == 1 then status.flag.N = 0 end
+	if status.flag.N == 1 and A <= 127 then status.flag.N = 0 end
+	print("SBC  A = ", tonumber(temp2) .. " - " .. tonumber(temp) .. " - " .. "( 1  -  " ..tonumber(temp3) .. ")", A, result, status.flag.C, status.flag.Z, status.flag.N, status.flag.V)
 	return true
 end
 
 
 local function  CLD() 
-	setFlag("D", false)
+	status.flag.D = ( false)
 	return false
 end		
 local function  CLI() 
-	setFlag("I", false)
+	status.flag.I = ( false)
 	return false
 end	
 local function  CLV() 
-	setFlag("V", false)
+	setFlag( "V", ( false))
 	return false
 end		
 
 local function  PHA() 
 	write(STACKPOINTERBASE + stkp, A)
+	--print("PHA writing ", string.format("%02x", A), "to the stack at", string.format("%04x", STACKPOINTERBASE + stkp))
 	stkp = stkp - 1
 	return false
 end
 local function  PLA() 
 	stkp = stkp + 1
 	A = read(STACKPOINTERBASE + stkp)
-	setFlag("Z", A == 0x00)
-	setFlag("N", bitand(A, 0x80))
+	--print("PLA Poping ", string.format("%02x", A), "from stack location", string.format("%04x", STACKPOINTERBASE + stkp))
+	setFlag("Z",  A == 0x00)
+	setFlag("N", ( band(A, 0x80)))
 	return false
 end
 
@@ -426,64 +499,65 @@ end
 local function  ASL() 
 	fetch();
 	temp = shiftLeft(fetched, 1)
-	setFlag("C", bitand(temp, 0xFF00) > 0)
-	setFlag("Z", bitand(temp , 0x00FF) == 0x00)
-	setFlag("N", bitand(temp , 0x80))
+	setFlag("C", band(temp, 0xFF00) > 0)
+	setFlag("Z",  band(temp , 0x00FF) == 0x00)
+	setFlag("N", ( band(temp , 0x80)))
 	if impliedAddressingMode then
-		A = bitand(temp, 0x00FF)
+		A = band(temp, 0x00FF)
 	else
-		write(addr_abs, bitand(temp, 0x00FF))
+		write(address_abs, band(temp, 0x00FF))
 	end
 	return false
 end	
 local function  BIT() 
 
 	fetch()
-	temp = bitand(A , fetched)
-	setFlag("Z", bitand(temp , 0x00FF) == 0x00)
-	setFlag("N", bitand(fetched , shiftLeft(1, 7)))
-	setFlag("V", bitand(fetched , shiftLeft(1, 6)))
+	temp = band(A , fetched)
+	setFlag("Z",  band(temp , 0x00FF) == 0x00)
+	setFlag("N", ( band(fetched , shiftLeft(1, 7))))
+	setFlag( "V", tonumber( band(fetched , shiftLeft(1, 6))))
 	return false
 end
 local function  BRK() 
 	pc = pc + 1
 	
-	setFlag("I", 1)
-	write(STACKPOINTERBASE + stkp, bitand(math.floor(shiftRight(pc, 8)), 0x00FF))
+	status.flag.I = ( 1)
+	write(STACKPOINTERBASE + stkp, band(math.floor(shiftRight(pc, 8)), 0x00FF))
 	stkp = stkp - 1
-	write(STACKPOINTERBASE + stkp,  bitand(pc, 0x00FF))
+	write(STACKPOINTERBASE + stkp,  band(pc, 0x00FF))
 	stkp = stkp - 1
 
-	setFlag("B", 1)
-	write(STACKPOINTERBASE + stkp, getStatus())
+	status.flag.B = ( 1)
+	write(STACKPOINTERBASE + stkp, status.reg)
 	stkp = stkp - 1
-	setFlag("B", 0)
+	status.flag.B = ( 0)
 
-	pc = bitor(read(0xFFFE), shiftLeft(read(0xFFFF), 8))
+	pc = bor(read(0xFFFE), shiftLeft(read(0xFFFF), 8))
 	return false;
 end
 local function  CMP() 
+	--print(string.format("%04x", address_abs))
 	fetch()
 	temp = A - fetched
-	setFlag("C", A >= fetched)
-	setFlag("Z", bitand(temp , 0x00FF) == 0x0000)
-	setFlag("N", bitand(temp , 0x0080) > 0)
+	setFlag("C",  (A >= fetched))
+	setFlag("Z", ( A == fetched))
+	setFlag("N", ( band(temp , 0x0080) > 0))
 	return true
 end	
 local function  CPX()
 	fetch()
 	temp = X - fetched
-	setFlag("C", X >= fetched)
-	setFlag("Z", bitand(temp , 0x00FF) == 0x0000)
-	setFlag("N", bitand(temp , 0x0080) > 0)
+	setFlag("C",  X >= fetched)
+	setFlag("Z", ( band(temp , 0x00FF) == 0x0000))
+	setFlag("N", ( band(temp , 0x0080) > 0))
 	return false
 end
 local function  CPY()
 	fetch()
 	temp = Y - fetched
-	setFlag("C", Y >= fetched)
-	setFlag("Z", bitand(temp , 0x00FF) == 0x0000)
-	setFlag("N", bitand(temp , 0x0080) > 0)
+	setFlag("C",  Y >= fetched)
+	setFlag("Z", ( band(temp , 0x00FF) == 0x0000))
+	setFlag("N", ( band(temp , 0x0080) > 0))
 	return false
 end
 local function  DEC() 
@@ -494,27 +568,27 @@ local function  DEC()
 	end
 	if temp >= 256 then temp = temp%256 end
 	write (address_abs, temp)
-	setFlag("Z", bitand(temp , 0x00FF) == 0x0000)
-	setFlag("N", bitand(temp , 0x0080) > 0)
+	setFlag("Z", ( band(temp , 0x00FF) == 0x0000))
+	setFlag("N", ( band(temp , 0x0080) > 0))
 	return false
 end
 local function  DEX() 
-	X = bitand(X-1 , 0x00FF)
-	setFlag("Z", X == 0)
-	setFlag("N", bitand(X , 0x0080) >= 1)
+	X = band(X-1 , 0x00FF)
+	setFlag("Z", ( X == 0))
+	setFlag("N", ( band(X , 0x0080) >= 1))
 	return false
 end	
 local function  DEY() 
-	Y = bitand(Y-1 , 0x00FF)
-	setFlag("Z", Y == 0)
-	setFlag("N", bitand(Y , 0x0080) >= 1)
+	Y = band(Y-1 , 0x00FF)
+	setFlag("Z", ( Y == 0))
+	setFlag("N", ( band(Y , 0x0080) >= 1))
 	return false
 end		
 local function  EOR()
 	fetch()
-	A = bit.xor(A, fetched)
-	setFlag("Z", A == 0x00)
-	setFlag("N", bitand(A, 0x80))
+	A = bit.bxor(A, fetched)
+	setFlag("Z", ( A == 0x00))
+	setFlag("N", ( band(A, 0x80)))
 	return true
 end
 
@@ -526,8 +600,8 @@ local function  INC()
 	end
 	if temp >= 256 then temp = temp%256 end
 	write (address_abs, temp)
-	setFlag("Z", bitand(temp , 0x00FF) == 0x0000)
-	setFlag("N", bitand(temp , 0x0080) > 0)
+	setFlag("Z", ( band(temp , 0x00FF) == 0x0000))
+	setFlag("N", ( band(temp , 0x0080) > 0))
 	return false
 end
 local function  INX()
@@ -537,8 +611,8 @@ local function  INX()
 	end
 	if temp >= 256 then temp = temp%256 end
 	X = temp
-	setFlag("Z", bitand(temp , 0x00FF) == 0x0000)
-	setFlag("N", bitand(temp , 0x0080) > 0)
+	setFlag("Z", ( band(temp , 0x00FF) == 0x0000))
+	setFlag("N", ( band(temp , 0x0080) > 0))
 	return false
 end		
 local function  INY()
@@ -548,8 +622,8 @@ local function  INY()
 	end
 	if temp >= 256 then temp = temp%256 end
 	Y = temp
-	setFlag("Z", bitand(temp , 0x00FF) == 0x0000)
-	setFlag("N", bitand(temp , 0x0080) > 0)
+	setFlag("Z", ( band(temp , 0x00FF) == 0x0000))
+	setFlag("N", ( band(temp , 0x0080) > 0))
 	return false
 end		
 
@@ -559,9 +633,9 @@ local function  JMP()
 end
 local function  JSR() 
 	pc = pc -1
-	write(STACKPOINTERBASE + stkp, bitand(shiftRight(pc, 8), 0x00FF))
+	write(STACKPOINTERBASE + stkp, band(shiftRight(pc, 8), 0x00FF))
 	stkp = stkp - 1
-	write(STACKPOINTERBASE + stkp, bitand(pc, 0x00FF))
+	write(STACKPOINTERBASE + stkp, band(pc, 0x00FF))
 	stkp = stkp - 1
 	pc = address_abs
 	return false
@@ -569,35 +643,35 @@ end
 local function  LDA() 
 	fetch()
 	A = fetched
-	setFlag("Z", A == 0x00)
-	setFlag("N", bitand(A , 0x80))
+	setFlag("Z", ( A == 0x00))
+	setFlag("N", ( band(A , 0x80)))
 	return true
 end	
 local function  LDX() 
 	fetch()
 	X = fetched
-	setFlag("Z", X == 0x00)
-	setFlag("N", bitand(X , 0x80))
+	setFlag("Z", ( X == 0x00))
+	setFlag("N", ( band(X , 0x80)))
 	return true
 end	
 local function  LDY() 
 	fetch()
 	Y = fetched
-	setFlag("Z", Y == 0x00)
-	setFlag("N", bitand(Y , 0x80))
+	setFlag("Z", ( Y == 0x00))
+	setFlag("N", ( band(Y , 0x80)))
 	return true
 end	
 
 local function  LSR() 
 	fetch()
-	setFlag("C", bitand(fetched, 0x0001))
+	setFlag("C",  band(fetched, 0x0001))
 	temp = shiftRight(fetched, 1)
-	setFlag("Z", bitand(temp , 0x00FF) == 0x0000)
-	setFlag("N", bitand(temp , 0x0080) > 0)
+	setFlag("Z", ( band(temp , 0x00FF) == 0x0000))
+	setFlag("N", ( band(temp , 0x0080) > 0))
 	if impliedAddressingMode then
-		A = bitand(temp, 0x00FF)
+		A = band(temp, 0x00FF)
 	else
-		write(addr_abs, bitand(temp, 0x00FF))
+		write(address_abs, band(temp, 0x00FF))
 	end
 	return 0;
 end	
@@ -607,62 +681,67 @@ local function  NOP()
 end	
 local function  ORA()
 	fetch()
-	A = bitor(A, fetched)
-	setFlag("Z", A == 0x00)
-	setFlag("N", bitand(A, 0x80))
+	A = bor(A, fetched)
+	setFlag("Z", ( A == 0x00))
+	setFlag("N", ( band(A, 0x80)))
 	return true
 end
 local function  PHP() 
-	write(STACKPOINTERBASE + stkp, bitor(bitor(status, tonumber(getFlag("B"))), tonumber(getFlag("U"))))
-	setFlag("B", 0)
-	setFlag("U", 0)
+	local temp = bor(status.reg, status.flag.B)
+	write(STACKPOINTERBASE + stkp, bor( temp, status.flag.U))
+	--print("PHP writing ", string.format("%02x", bor(temp, status.flag.U), "to the stack at", string.format("%04x", STACKPOINTERBASE + stkp)))
+	status.flag.B = ( 0)
+	status.flag.U = ( 0)
 	stkp = stkp - 1
 	return false
 end
 
 local function  PLP() 
-	setStatus(read(STACKPOINTERBASE + stkp))
-	setFlag("U", 1)
+	stkp = stkp + 1
+	tmp = read(STACKPOINTERBASE + stkp)
+	status.reg = (tmp)
+	--print("PLP Poping ", string.format("%02x", tmp), "from stack location", string.format("%04x", STACKPOINTERBASE + stkp))
+	status.flag.U = ( 1)
 	return false
 end	
 local function  ROL() 
 	fetch()
-	temp = bitor(leftShift(fetched, 1), tonumber(getFlag("C")))
-	setFlag("C", bitand(temp, 0xFF00))
-	setFlag("Z", bitand(temp, 0x00FF) == 0)
-	setFlag("N", bitand(temp, 0x0080))
+	temp = bor(shiftLeft(fetched, 1), status.flag.C)
+	setFlag("C",  band(temp, 0xFF00))
+	setFlag("Z", ( band(temp, 0x00FF) == 0))
+	setFlag("N", ( band(temp, 0x0080)))
 	if impliedAddressingMode then
-		A = bitand(temp, 0x00ff)
+		A = band(temp, 0x00ff)
 	else
-		write(address_abs, bitand(temp, 0x00ff))
+		write(address_abs, band(temp, 0x00ff))
 	end
 	return false
 
-end
+end -- shiftRight
 local function  ROR()
 	fetch()
-	temp = bitor(leftShift(fetched, 7), rightShift(fetched, 1))
-	setFlag("C", bitand(temp, 0x01))
-	setFlag("Z", bitand(temp, 0x00FF) == 0)
-	setFlag("N", bitand(temp, 0x0080))
+	temp = bor(shiftLeft(fetched, 7), shiftRight(fetched, 1))
+	setFlag("C",  band(temp, 0x01))
+	setFlag("Z", ( band(temp, 0x00FF) == 0))
+	setFlag("N", ( band(temp, 0x0080)))
 	if impliedAddressingMode then
-		A = bitand(temp, 0x00ff)
+		A = band(temp, 0x00ff)
 	else
-		write(address_abs, bitand(temp, 0x00ff))
+		write(address_abs, band(temp, 0x00ff))
 	end
 	return false
 end
 local function  RTI() 
 	stkp = stkp + 1
-	setStatus(read(STACKPOINTERBASE + stkp))
+	status.reg = (read(STACKPOINTERBASE + stkp))
 
-	setStatus(bitand(getStatus(), bit.bnot(tonumber(getFlag("B"), 2))))
-	setStatus(bitand(getStatus(), bit.bnot(tonumber(getFlag("U"), 2))))
+	status.reg = (band(status.reg, bit.bnot(status.flag.B)))
+	status.reg = (band(status.reg, bit.bnot(status.flag.U)))
 	stkp = stkp + 1
 	lo = read(STACKPOINTERBASE + stkp)
 	stkp = stkp + 1
 	hi = read(STACKPOINTERBASE + stkp)
-	pc = bitor(shiftLeft(hi, 8),  lo)
+	pc = bor(shiftLeft(hi, 8),  lo)
 	return false
 end	
 local function  RTS()
@@ -670,20 +749,20 @@ local function  RTS()
 	lo = read(STACKPOINTERBASE + stkp)
 	stkp = stkp + 1
 	hi = read(STACKPOINTERBASE + stkp)
-	pc = bitor(shiftLeft(hi, 8),  lo)
+	pc = bor(shiftLeft(hi, 8),  lo)
 	pc = pc + 1
 	return false
 end	
 local function  SEC() 
-	setFlag("C", true)
+	setFlag("C",  true)
 	return false
 end
 local function  SED()  
-	setFlag("D", true)
+	status.flag.D = ( true)
 	return false
 end	
 local function  SEI()  
-	setFlag("I", true)
+	status.flag.I = ( true)
 	return false
 end
 local function  STA()
@@ -700,26 +779,26 @@ local function  STY()
 end
 local function  TAX()
 	X = A
-	setFlag("Z", X == 0x00)
-	setFlag("N", bitand(X, 0x80))
+	setFlag("Z", ( X == 0x00))
+	setFlag("N", ( band(X, 0x80)))
 	return false
 end
 local function  TAY()
 	Y = A
-	setFlag("Z", Y == 0x00)
-	setFlag("N", bitand(Y, 0x80))
+	setFlag("Z", ( Y == 0x00))
+	setFlag("N", ( band(Y, 0x80)))
 	return false
 end
 local function  TSX() 
 	X = stkp
-	setFlag("Z", X == 0x00)
-	setFlag("N", bitand(X, 0x80))
+	setFlag("Z", ( X == 0x00))
+	setFlag("N", ( band(X, 0x80)))
 	return false
 end	
 local function  TXA() 
 	A = X
-	setFlag("Z", A == 0x00)
-	setFlag("N", bitand(A, 0x80))
+	setFlag("Z", ( A == 0x00))
+	setFlag("N", ( band(A, 0x80)))
 	return false
 end	
 local function  TXS() 
@@ -728,8 +807,8 @@ local function  TXS()
 end	
 local function  TYA() 
 	A = Y
-	setFlag("Z", A == 0x00)
-	setFlag("N", bitand(A, 0x80))
+	setFlag("Z", ( A == 0x00))
+	setFlag("N", ( band(A, 0x80)))
 	return false
 end
 
@@ -788,12 +867,7 @@ local function fetchExecuteCycle()
 
 end
 
-local function clock(dt)
-	if cycles == 0 then
-		fetchExecuteCycle()
-	end
-	cycles = cycles - 1
-end
+
 
 
 local function reset()
@@ -801,22 +875,14 @@ local function reset()
 	X = 0
 	Y = 0
 	stkp = 0xFD
-	status = {} -- status register 8 bit word
-    status["C"] = "0"
-    status["Z"] = "0"
-    status["I"] = "0"
-    status["D"] = "0"
-    status["B"] = "0"
-    status["U"] = "0"
-    status["V"] = "0"
-    status["N"] = "0"
-
+	status.reg = 0 -- status register 8 bit word
+   
 	address_abs = 0xFFFC
 	lo = read(address_abs + 0)
 	hi = read(address_abs + 1)
 
-	pc = bitor(shiftLeft(hi, 8),  lo)
-	--pc = 0x8000
+	pc = bor(shiftLeft(hi, 8),  lo)
+	--pc = 0x8000 -- FOR NESTEST
 	address_abs = 0
 	address_relative = 0
 	fetched = 0
@@ -825,51 +891,56 @@ local function reset()
 end -- interrupts and resets
 local function irq() 
 
-	if getFlag("I") == "0" then
+	if status.flag.I == 0 then
 		-- write program counter to the stack
-		write(STACKPOINTERBASE + stkp, bitand(rightShift(pc, 8), 0x00FF))
+		write(STACKPOINTERBASE + stkp, band(shiftRight(pc, 8), 0x00FF))
 		stkp = stkp - 1
-		write(STACKPOINTERBASE + stkp, bitand(pc, 0x00FF))
+		write(STACKPOINTERBASE + stkp, band(pc, 0x00FF))
 		stkp = stkp - 1
 		--store status
-		setFlag("B", "0")
-		setFlag("U", "1")
-		setFlag("I", "1")
-		write(STACKPOINTERBASE + stkp, btoi(status))
+		status.flag.B = ( 0)
+		status.flag.U = ( 1)
+		status.flag.I = ( 1)
+		write(STACKPOINTERBASE + stkp, status.reg)
 		stkp = stkp - 1
 		--jump to location at address FFFE
 		address_abs = 0xfffe
 		lo = read(address_abs + 0)
 		hi = read(address_abs + 1)
-		pc = bitor(shiftLeft(hi, 8),  lo)
+		pc = bor(shiftLeft(hi, 8),  lo)
 
 		cycles = 7
 	end
 		
 
 end -- interrupt request, can be ignored
-local function nml() 
+local function nmi() 
 	-- write program counter to the stack
-	write(STACKPOINTERBASE + stkp, bitand(rightShift(pc, 8), 0x00FF))
+	write(STACKPOINTERBASE + stkp, band(shiftRight(pc, 8), 0x00FF))
 	stkp = stkp - 1
-	write(STACKPOINTERBASE + stkp, bitand(pc, 0x00FF))
+	write(STACKPOINTERBASE + stkp, band(pc, 0x00FF))
 	stkp = stkp - 1
 	--store status
-	setFlag("B", "0")
-	setFlag("U", "1")
-	setFlag("I", "1")
-	write(STACKPOINTERBASE + stkp, btoi(status))
+	status.flag.B = ( 0)
+	status.flag.U = ( 1)
+	status.flag.I = ( 1)
+	write(STACKPOINTERBASE + stkp, status.reg)
 	stkp = stkp - 1
 	--jump to location at address FFFA
 	address_abs = 0xfffa
 	lo = read(address_abs + 0)
 	hi = read(address_abs + 1)
-	pc = bitor(shiftLeft(hi, 8),  lo)
+	pc = bor(shiftLeft(hi, 8),  lo)
 
 	cycles = 8
 
 end -- nonMaskable interrupt
-
+local function clock(dt)
+	if cycles == 0 then
+		fetchExecuteCycle()
+	end
+	cycles = cycles - 1
+end
 
 local function printA()
 	print(opcode)
@@ -893,6 +964,9 @@ end
 local function getY()
 	return Y
 end
+local function getSP()
+	return stkp
+end
 
 local function getCurrentOp()
 	return LOOKUP[opcode+1].name
@@ -903,10 +977,11 @@ cpu = {btoi = btoi,
  A =  A,
  X =  X,
  Y =  Y,
+ getSP = getSP,
  getPC = getPC,
  getLastPC = getLastPC,
  printA = printA,
- status =  status,
+ -- status =  status,
  stkp =  stkp,
  itob =  itob,
  shiftLeft =  shiftLeft,
@@ -989,7 +1064,7 @@ cpu = {btoi = btoi,
  clock =  clock,
  reset =  reset,
  irq  =  irq ,
- nml  =  nml,
+ nmi  =  nmi,
  debugClock = fetchExecuteCycle,
  getCurrentOp = getCurrentOp,
  getA = getA, 

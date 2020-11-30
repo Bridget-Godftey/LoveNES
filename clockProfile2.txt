@@ -1,0 +1,65 @@
+###############################################################################################################
+#####  ProFi, a lua profiler. This profile was generated on: 11/27/20 16:21:34
+#####  ProFi is created by Luke Perkin 2012 under the MIT Licence, www.locofilm.co.uk
+#####  Version 1.3. Get the most recent version at this gist: https://gist.github.com/2838755
+###############################################################################################################
+
+| TOTAL TIME = 5.947000
+| FILE                                              : FUNCTION                                : LINE                : TIME        : RELATIVE    : CALLED      |
+| bus.lua                                           : clockFrame2                             :  120                : 5.947       : 100.00%     :       1     |
+| ppu.lua                                           : clock                                   :  601                : 4.637       : 77.97%      :   89004     |
+| cpu.lua                                           : clock                                   :  887                : 0.990       : 16.65%      :   29668     |
+| cpu.lua                                           : fetchExecuteCycle                       :  795                : 0.901       : 15.15%      :    8477     |
+| ppu.lua                                           : getColorFromPaletteRam                  :  354                : 0.677       : 11.38%      :   89004     |
+| ppu.lua                                           : updateShifters                          :  295                : 0.494       : 8.31%       :   65521     |
+| ppu.lua                                           : ppuRead                                 :  488                : 0.393       : 6.61%       :   32880     |
+| bus.lua                                           : read                                    :   34                : 0.335       : 5.63%       :   25425     |
+| ppu.lua                                           : loadBackgroundShifters                  :  283                : 0.310       : 5.21%       :    8400     |
+| cpu.lua                                           : execute                                 :  592                : 0.255       : 4.29%       :    4237     |
+| cpu.lua                                           : addressMode                             :  177                : 0.202       : 3.40%       :    4237     |
+| cartridge.lua                                     : cpuRead                                 :   82                : 0.169       : 2.84%       :   21188     |
+| ppu.lua                                           : shiftLeft                               :   93                : 0.155       : 2.61%       :   57120     |
+| cpu.lua                                           : addressMode                             :  263                : 0.123       : 2.07%       :    4236     |
+| ppu.lua                                           : incScrollX                              :  224                : 0.099       : 1.66%       :    8160     |
+| cpu.lua                                           : execute                                 :  349                : 0.095       : 1.60%       :    4236     |
+| cpu.lua                                           : setFlag                                 :  126                : 0.090       : 1.51%       :    8476     |
+| cartridge.lua                                     : ppuRead                                 :   99                : 0.054       : 0.91%       :    8160     |
+| ppu.lua                                           : cpuRead                                 :  395                : 0.049       : 0.82%       :    4237     |
+| cpu.lua                                           : shiftLeft                               :   93                : 0.014       : 0.24%       :    4237     |
+| ppu.lua                                           : incScrollY                              :  242                : 0.003       : 0.05%       :     240     |
+| ppu.lua                                           : transferAddressX                        :  268                : 0.002       : 0.03%       :     240     |
+| [C]                                               : type                                    :   -1                : 0.000       : 0.00%       :    8476     |
+| cpu.lua                                           : bitand                                  :   29                : 0.000       : 0.00%       :   21179     |
+| cpu.lua                                           : fetch                                   :   56                : 0.000       : 0.00%       :    4238     |
+| [C]                                               : fetch                                   :   -1                : 0.000       : 0.00%       :    4238     |
+| ProFi.lua                                         : startHooks                              :  234                : 0.000       : 0.00%       :       0     |
+| cpu.lua                                           : bitor                                   :   36                : 0.000       : 0.00%       :    8473     |
+| cpu.lua                                           : execute                                 :  753                : 0.000       : 0.00%       :       1     |
+| ProFi.lua                                         : shouldReturn                            :  199                : 0.000       : 0.00%       :       1     |
+| [C]                                               : bitand                                  :   -1                : 0.000       : 0.00%       :   21179     |
+| ProFi.lua                                         : stop                                    :   85                : 0.000       : 0.00%       :       1     |
+| cpu.lua                                           : execute                                 :  599                : 0.000       : 0.00%       :       1     |
+| [C]                                               : bitor                                   :   -1                : 0.000       : 0.00%       :    8473     |
+| cpu.lua                                           : addressMode                             :  153                : 0.000       : 0.00%       :       1     |
+| cpu.lua                                           : addressMode                             :  148                : 0.000       : 0.00%       :       3     |
+| mappers.lua                                       : cpuMapRead                              :   22                : 0.000       : 0.00%       :       0     |
+| [C]                                               : setColor                                :   -1                : 0.000       : 0.00%       :   89004     |
+| [C]                                               : rectangle                               :   -1                : 0.000       : 0.00%       :   89004     |
+| [C]                                               : __mul                                   :   -1                : 0.000       : 0.00%       :      34     |
+| [C]                                               : bor                                     :   -1                : 0.000       : 0.00%       :   74640     |
+| [C]                                               : band                                    :   -1                : 0.000       : 0.00%       :  251071     |
+| ProFi.lua                                         : start                                   :   67                : 0.000       : 0.00%       :       0     |
+| [C]                                               : __index                                 :   -1                : 0.000       : 0.00%       :  637801     |
+| [C]                                               : getTime                                 :   -1                : 0.000       : 0.00%       :       2     |
+| cpu.lua                                           : execute                                 :  419                : 0.000       : 0.00%       :       1     |
+| [C]                                               : tonumber                                :   -1                : 0.000       : 0.00%       :   70717     |
+| [C]                                               : shiftRight                              :   -1                : 0.000       : 0.00%       :   16320     |
+| cpu.lua                                           : execute                                 :  713                : 0.000       : 0.00%       :       1     |
+| [C]                                               : __newindex                              :   -1                : 0.000       : 0.00%       :   12716     |
+| mappers.lua                                       : ppuMapRead                              :   41                : 0.000       : 0.00%       :       0     |
+| ppu.lua                                           : shiftRight                              :   96                : 0.000       : 0.00%       :   16320     |
+| ProFi.lua                                         : stopHooks                               :  238                : 0.000       : 0.00%       :       1     |
+| [C]                                               : __sub                                   :   -1                : 0.000       : 0.00%       :       1     |
+| cpu.lua                                           : read                                    :   46                : 0.000       : 0.00%       :   25425     |
+| [C]                                               : __add                                   :   -1                : 0.000       : 0.00%       :       5     |
+| [C]                                               : sethook                                 :   -1                : 0.000       : 0.00%       :       1     |

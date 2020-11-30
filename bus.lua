@@ -1,8 +1,14 @@
 require "bytestring"
 ppu = require "PPU"
-require "cartridge"
+
+controler = require "controler"
+
+gamepad1 = 0
+gamepad2 = 0
+
 AND = 4
 bus = {}
+local ffi = require("ffi")
 --CPU can read/write to:
 --RAM
 --APU
@@ -15,114 +21,186 @@ bus.digitalScreen = love.graphics.newCanvas(256, 240)
 	--PATTERN MEMORY
 	--PROGRAM ROM
 	--MAPPER
+bus.cycles = 0
 
---ppu = newPPU()
-
-
-
-
-bus.myCart = newCart("test.nes")
+bus.ppuNMI = false
+bus.last = 0
 
 
-function bitoper(a, b, oper)
-   local r, m, s = 0, 2^16
-   repeat
-      s,a,b = a+b+m, a%m, b%m
-      r,m = r + m*oper%(s-a-b), m/2
-   until m < 1
-   return r
+
+local readCtrl = function (addr) end
+local writeCtrl = function (addr, val) end
+local OAMRead = function (addr) end
+local OAMWrite = function (addr, value) end
+
+
+bus.register = function (addr1, addr2, rd, wr, n)
+	readCtrl = rd
+	writeCtrl = wr
 end
+
+
+
+bus.register2 = function (addr1, addr2, rd, wr, n)
+	OAMRead = rd
+	OAMWrite = wr
+end
+require "PPU2"
+require "cartridge"
+bus.myCart = newCart("nestest.nes")
+-- -- bus.cpuRam = {} --= ffi.new("uint8_t [8192]", {})
+-- for i = 0, 8192 do
+-- 	bus.cpuRam[i] = 0
+-- end
 
 bus.cpuRam = {}
-for i = 0, 0x2000 do
+for i = 0, 8192 do
 	bus.cpuRam[i] = 0
 end
+
 
 bus.cpuRead = function (addr, readonly)
 	readonly = readonly or false
 
 	data = 0x00;
 	if addr >= 0x0000 and addr <= 0x1FFF then
-		data = bus.cpuRam[addr%0x0800]
+		data = bus.cpuRam[bit.band(addr, 0x07ff)]
 	elseif addr >= 0x2000 and addr <= 0x3FFF then
-		data = ppu.cpuRead(bit.band(addr, 0x000), val)
+		data = readCtrl(addr%8)
+		--data = ppu.cpuRead(addr%8)
+		bus.last = data
 	--elseif addr == 0xFFFC or addr == 0xFFFD then
 		--data = bus.cpuRam[addr]
+	elseif addr == 0x4014 then
+		OAMRead(addr)
+	elseif addr >= 0x4016 and addr <= 0x4017 then
+		if bit.band(gamepad1, 0x80) > 0 then data = 1 else data = 0 end
+		gamepad1 = gamepad1 *2
 	elseif addr >= 0x4020 then
 		data = bus.myCart.cpuRead(addr, readonly)
 	end
 	return data
 end
-
 bus.cpuWrite = function (addr, val)
 	if addr >= 0x0000 and addr <= 0x1FFF then
-		bus.cpuRam[bit.band(addr, 0x07ff)] = val%0x100
+		bus.cpuRam[bit.band(addr, 0x07ff)] = val
 	elseif addr >= 0x2000 and addr <= 0x3FFF then
-		ppu.cpuWrite(bit.band(addr, 0x0007), val)
+		--ppu.cpuWrite(bit.band(addr, 0x0007), val)
+		--readCtrl(bit.band(addr, 0x0007), val)
+		writeCtrl(addr%8, val)
 	--elseif addr == 0xFFFC or addr == 0xFFFD then
 	--	bus.cpuRam[addr] = val
+	elseif addr == 0x4014 then
+		OAMWrite(addr, val)
+	elseif addr >= 0x4016 and addr <= 0x4017 then
+		gamepad1 = controler.readByte()
 	elseif addr >= 0x4020 then
-		bus.myCart.CPUWrite(addr, val)
+		bus.myCart.cpuWrite(addr, val)
 	end
 end
 
 bus.insertCart = function (cartridge)
 	bus.myCart = newCart(cartridge)
-
+	ppu2.insertCart(bus.myCart)
 	ppu.connectCartridge(bus.myCart)
 end
 bus.clock = function () 
 	love.graphics.setCanvas(bus.digitalScreen)
 	ppu.clock()
+	ppu.clock()
+	ppu.clock()
+	bus.ppuNMI = ppu.nmi
+		--if bus.systemClockCounter%3 == 0 then
+	cpu.clock()
+	ppu.nmi = bus.ppuNMI
 	love.graphics.setCanvas()
-	if bus.systemClockCounter%3 == 0 then
-		cpu.clock()
-	end
-	bus.systemClockCounter = bus.systemClockCounter + 1
 end
 bus.testPPU = function()
 	ppu.clock()
 end
 
 bus.clockFrame = function () 
-	--      print (bus.frameComplete())
-	local cnt = 0
+	bus.clockFrame2()
+	----      print (bus.frameComplete())
+	----local cnt = 0
+	--love.graphics.setCanvas(bus.digitalScreen)
+	--for n= 1, 7445 do
+	--	ppu.clock()
+	--	ppu.clock()
+	--	ppu.clock()
+	--	cpu.clock()
+	--	ppu.clock()
+	--	ppu.clock()
+	--	ppu.clock()
+	--	cpu.clock()
+	--	ppu.clock()
+	--	ppu.clock()
+	--	ppu.clock()
+	--	cpu.clock()
+	--	ppu.clock()
+	--	ppu.clock()
+	--	ppu.clock()
+	--	cpu.clock()
+	--	--cnt = cnt + 1
+	--	--if bus.systemClockCounter%3 == 0 then
+	--    
+	--	--bus.systemClockCounter = bus.systemClockCounter + 1
+	--end
+	--love.graphics.setCanvas()
+	----print (cnt)
+end
+
+bus.drawPSHACK = function () 
 	love.graphics.setCanvas(bus.digitalScreen)
-	for n= 1, 7445 do
-		ppu.clock()
-		ppu.clock()
-		ppu.clock()
-		cpu.clock()
-		ppu.clock()
-		ppu.clock()
-		ppu.clock()
-		cpu.clock()
-		ppu.clock()
-		ppu.clock()
-		ppu.clock()
-		cpu.clock()
-		ppu.clock()
-		ppu.clock()
-		ppu.clock()
-		cpu.clock()
-		cnt = cnt + 1
-		--if bus.systemClockCounter%3 == 0 then
-	    
+	ppu.drawPSHACK() 
+	love.graphics.setCanvas()
+	love.graphics.setColor(1, 1, 1, 1)
+	love.graphics.draw(bus.digitalScreen, 0, 0, 0, 2, 2)
+end
+
+bus.clockFrame2 = function () 
+	--print (bus.frameComplete())
+	controler.getState()
+	--local cnt = 0
+	love.graphics.setCanvas(bus.digitalScreen)
+	bus.cycles = 29781
+	for i = 0,  29781 do
+		--ppu.clock()
+		--ppu.clock()
+		--ppu.clock()
+		ppu2.run()
+		bus.cycles =  bus.cycles  - 1
+		ppu2.run()
+		bus.cycles =  bus.cycles  - 1
+		ppu2.run()
+		bus.cycles =  bus.cycles  - 1
+		--ppu2.draw()
+		--bus.ppuNMI = ppu.nmi
+	    cpu.clock()
+	    --ppu.nmi = bus.ppuNMI
 		--bus.systemClockCounter = bus.systemClockCounter + 1
 	end
-	love.graphics.setCanvas()
-	print (cnt)
+    love.graphics.setCanvas()
+    
+	--return bus.digitalScreen
 end
-bus.clockFrame2 = function () 
-	print (bus.frameComplete())
+
+
+bus.clockFrame3 = function () 
+	--print (bus.frameComplete())
 	local cnt = 0
 	love.graphics.setCanvas(bus.digitalScreen)
 	while( not bus.frameComplete()) do
 		ppu.clock()
 		ppu.clock()
 		ppu.clock()
+		bus.ppuNMI = ppu.nmi
 		--if bus.systemClockCounter%3 == 0 then
 	    cpu.clock()
+	    local op = cpu.getCurrentOp
+	    --print("current opcode = ", op[1], op[2])
+
+	    ppu.nmi = bus.ppuNMI
 		--bus.systemClockCounter = bus.systemClockCounter + 1
 	end
 	love.graphics.setCanvas()
@@ -141,8 +219,16 @@ bus.frameComplete = function()
 	return ppu.getFrameComplete()
 end
 
+bus.getPatternMemory = function (i, pal)
+	return ppu.getPatternTables(i, pal)
+end
+bus.getNameTables = function ()
+	return ppu2.getNameTables()
+end
 --testCode = {0xA2, 0x0A, 0x8E, 0x00, 0x00, 0xA2, 0x03, 0x8E, 0x01, 0x00, 0xAC, 0x00, 0x00, 0xA9, 0x00, 0x18, 0x6D, 0x01, 0x00, 0x88, 0xD0, 0xFA, 0x8D, 0x02, 0x00, 0xEA, 0xEA, 0xEA, 0xEA, 0xEA, 0xEA, 0xEA}
-
+bus.getSwatchFromPaletteRam = function (num)
+	return ppu.getSwatchFromPaletteRam(num)
+end
 --nOffset = 0x0600
 
 --for i= 0, table.getn(testCode)-1 do
@@ -192,7 +278,7 @@ bus.getDissassembly = function (lb, ub)
 			local jmpTo = at_addr + addr_rel
 			if bit.band(addr_rel, 0x80) >= 1 then --Check if negative
 				addr_rel = bit.bor(addr_rel, 0xFF00)
-				print(addr_rel)
+				--print(addr_rel)
 				--addr_rel = i + addr_rel -1 
 				--addr_rel = addr_rel%0x10000
 				--prefix = " -"
@@ -210,7 +296,7 @@ bus.getDissassembly = function (lb, ub)
 			local addr_rel = bus.cpuRead(i+1, true)
 			i = i + 1
 			
-			table.insert(dissasssem, info.name .. " $" .. "00" .. string.format("%x", addr_rel))
+			table.insert(dissasssem, {info.name .. " $" .. "00" .. string.format("%x", addr_rel), at_addr})
 			at_addr = at_addr + 1
 		elseif info.addressMode == "ABS" then
 			local lo = string.format("%x", bus.cpuRead(i+1, true))

@@ -27,6 +27,12 @@ function newCart(fileName)
 
 	--Read header of iNES file
 
+	--mirrorModes
+	HORIZONTAL = 0
+	VERTICAL = 1
+	ONESCREEN_LO = 2
+	ONESCREEN_HI = 3
+
 	local romFile = assert(io.open(fileName, "rb")) -- open fileName
 	header = {}
 	header.name = tonumber(rd(romFile, 4)) -- read the first 16 bytes
@@ -44,8 +50,10 @@ function newCart(fileName)
 
 	--determine mapper ID
 	mapperID= bit.bor(shiftLeft(shiftRight(header.mapper2, 4),4), shiftRight(header.mapper1, 4))
-
+	mirrorMode = VERTICAL
+	if (bit.band(header.mapper1, 0x01) ) == 0 then mirrorMode = HORIZONTAL end
 	-- determine file format
+	cart.getMirrorMode = function () return mirrorMode end 
 	nFileType = 1
 	if nFileType == 0 then
 		--stub
@@ -91,6 +99,7 @@ function newCart(fileName)
 	cart.ppuRead = function(addr, readOnly) 
 		mappedAddr = cart.mapper.ppuMapRead(addr)
 		data = 0
+		--print("cart reading ", string.format("%04x", addr), string.format("%02x", CHRMemory[mappedAddr]))
 		if mappedAddr then
 			data = CHRMemory[mappedAddr]
 		end
