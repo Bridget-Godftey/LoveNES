@@ -11,6 +11,8 @@ function newMapper (num_prg_banks, num_chr_banks)
 	m.ppuMapRead = prd or  function (addr) return false end
 	m.ppuMapWrite = pwr or  function (addr) return false end
 
+	m.mirrorMode = 0
+
 	return m
 end
 
